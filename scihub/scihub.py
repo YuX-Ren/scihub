@@ -39,8 +39,8 @@ class SciHub(object):
     def __init__(self):
         self.sess = requests.Session()
         self.sess.headers = HEADERS
-        self.available_base_url_list = self._get_available_scihub_urls()
-        self.base_url = self.available_base_url_list[0] + '/'
+        # self.available_base_url_list = self._get_available_scihub_urls()
+        self.base_url = 'https://sci-hub.ru' + '/'
 
     def _get_available_scihub_urls(self):
         '''
@@ -119,6 +119,32 @@ class SciHub(object):
 
             start += 10
 
+    def search_download(self, query, limit=10, destination='', path=None):
+        """
+        Searches for papers on scihub and downloads them from sci-hub.
+        """
+        data = {'request': query}
+        res = self.sess.post(self.base_url + 'search', data=data)
+        s = self._get_soup(res.content)
+        button = s.find('button', onclick=True)
+
+        # Extract the URL from the onclick attribute
+        pdf_url = button['onclick'].split("'")[1]
+
+        # Ensure the URL is absolute
+        if pdf_url.startswith("//"):
+            pdf_url = "https:" + pdf_url
+            res = self.sess.get(pdf_url, verify=False)
+
+            data = {
+                'pdf': res.content,
+                'url': pdf_url,
+                'name': self._generate_name(res)
+            }        
+        if not 'err' in data:
+            self._save(data['pdf'],
+                       os.path.join(destination, path if path else data['name']))
+            
     @retry(wait_random_min=100, wait_random_max=1000, stop_max_attempt_number=10)
     def download(self, identifier, destination='', path=None):
         """
@@ -196,10 +222,15 @@ class SciHub(object):
         """
         res = self.sess.get(self.base_url + identifier, verify=False)
         s = self._get_soup(res.content)
-        iframe = s.find('iframe')
-        if iframe:
-            return iframe.get('src') if not iframe.get('src').startswith('//') \
-                else 'http:' + iframe.get('src')
+        button = s.find('button', onclick=True)
+
+        # Extract the URL from the onclick attribute
+        pdf_url = button['onclick'].split("'")[1]
+
+        # Ensure the URL is absolute
+        if pdf_url.startswith("//"):
+            pdf_url = "https:" + pdf_url
+        return pdf_url
 
     def _classify(self, identifier):
         """
